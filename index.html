@@ -2,115 +2,201 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Allegria Location Intelligence</title>
-  <link rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <style>
-    body { margin:0; font-family:Arial,sans-serif; }
-    header { background:#142b39; color:white; padding:18px; }
-    h2 { margin:0 0 6px; }
-    .controls { padding:12px; background:#f1f5f9; }
-    input { padding:10px; width:210px; max-width:55%; }
-    button { padding:11px; cursor:pointer; }
-    #map { height:calc(100vh - 180px); min-height:350px; }
-    #status { padding:10px; font-size:14px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allegria Location Intelligence</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+* {box-sizing:border-box}
+body {margin:0;font-family:Arial,sans-serif;color:#172b38}
+header {background:#142b39;color:white;padding:18px}
+h2 {margin:0 0 5px;font-size:22px}
+.controls {padding:12px;background:#f1f5f9;display:flex;gap:8px;flex-wrap:wrap}
+input {padding:10px;width:240px;max-width:100%;border:1px solid #cbd5e1;border-radius:5px}
+button {padding:10px 14px;border:1px solid #cbd5e1;border-radius:5px;background:white;cursor:pointer}
+button:hover {background:#e2e8f0}
+.stats {display:flex;gap:10px;flex-wrap:wrap;padding:12px;background:white}
+.stat {border:1px solid #e2e8f0;border-radius:7px;padding:10px 15px}
+.stat strong {font-size:22px;display:block}
+.filters {padding:8px 12px;background:#f8fafc;display:flex;gap:18px;flex-wrap:wrap}
+.filters label {cursor:pointer;font-size:14px}
+#status {padding:9px 12px;font-size:13px}
+#map {height:calc(100vh - 285px);min-height:420px}
+.dot {width:16px;height:16px;border:2px solid white;border-radius:50%;box-shadow:0 1px 5px #555}
+.green {background:#16a34a}
+.orange {background:#f59e0b}
+.gray {background:#64748b}
+.note {font-size:12px;color:#64748b;padding:8px 12px}
+</style>
 </head>
 <body>
-  <header>
-    <h2>ALLEGRIA LOCATION INTELLIGENCE</h2>
-    <small>Analisi territoriale internazionale</small>
-  </header>
+<header>
+<h2>ALLEGRIA LOCATION INTELLIGENCE</h2>
+<small>Analisi internazionale delle lavanderie self-service</small>
+</header>
 
-  <div class="controls">
-    <input id="city" value="Paris, France"
-      placeholder="Cerca una città">
-    <button onclick="searchCity()">Cerca città</button>
-    <button onclick="loadLaundries()">Lavanderie</button>
-  </div>
+<div class="controls">
+<input id="city" value="Paris, France" placeholder="Cerca una città">
+<button onclick="searchCity()">Cerca città</button>
+<button onclick="loadLaundries()">Cerca lavanderie self-service</button>
+</div>
 
-  <div id="status">Mappa pronta.</div>
-  <div id="map"></div>
+<div class="stats">
+<div class="stat">Self-service indicati<strong id="yes">0</strong></div>
+<div class="stat">Da verificare<strong id="unknown">0</strong></div>
+<div class="stat">Altre attività<strong id="other">0</strong></div>
+</div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
-    const map = L.map('map').setView([48.8566, 2.3522], 12);
-    const layer = L.layerGroup().addTo(map);
+<div class="filters">
+<label><input type="checkbox" id="showYes" checked onchange="renderMarkers()"> Verde: self-service</label>
+<label><input type="checkbox" id="showUnknown" checked onchange="renderMarkers()"> Arancione: da verificare</label>
+<label><input type="checkbox" id="showOther" onchange="renderMarkers()"> Grigio: altre attività</label>
+</div>
 
-    L.tileLayer(
-      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      {
-        attribution:'&copy; OpenStreetMap contributors',
-        maxZoom:19
-      }
-    ).addTo(map);
+<div id="status">Seleziona una città e avvia la ricerca.</div>
+<div id="map"></div>
+<div class="note">Fonte: OpenStreetMap. Dati indicativi, da verificare prima di investire.</div>
 
-    function status(message) {
-      document.getElementById('status').textContent = message;
-    }
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map=L.map('map').setView([48.8566,2.3522],12);
+const layer=L.layerGroup().addTo(map);
+let places=[];
 
-    async function searchCity() {
-      const city = document.getElementById('city').value.trim();
-      if (!city) return;
-      status('Ricerca città...');
-      try {
-        const url = 'https://nominatim.openstreetmap.org/search?' +
-          new URLSearchParams({q:city,format:'json',limit:'1'});
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Geocodifica non disponibile');
-        const data = await response.json();
-        if (!data.length) {
-          status('Città non trovata.');
-          return;
-        }
-        layer.clearLayers();
-        map.setView([Number(data[0].lat),Number(data[0].lon)],13);
-        status('Città selezionata: ' + data[0].display_name);
-      } catch(e) {
-        status('Errore nella ricerca della città.');
-      }
-    }
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+ attribution:'&copy; OpenStreetMap contributors',
+ maxZoom:19
+}).addTo(map);
 
-    async function loadLaundries() {
-      layer.clearLayers();
-      status('Ricerca lavanderie in corso...');
-      const b = map.getBounds();
-      const bbox = [
-        b.getSouth(),b.getWest(),b.getNorth(),b.getEast()
-      ].join(',');
+function setStatus(message){
+ document.getElementById('status').textContent=message;
+}
 
-      const query = '[out:json][timeout:40];(' +
-        'nwr["shop"="laundry"](' + bbox + ');' +
-        'nwr["shop"="dry_cleaning"](' + bbox + ');' +
-        ');out center;';
+function resetData(){
+ places=[];
+ layer.clearLayers();
+ for(const id of ['yes','unknown','other']){
+  document.getElementById(id).textContent='0';
+ }
+}
 
-      try {
-        const response = await fetch(
-          'https://overpass.kumi.systems/api/interpreter',
-          {method:'POST',body:new URLSearchParams({data:query})}
-        );
-        if (!response.ok) throw new Error('Servizio non disponibile');
-        const data = await response.json();
-        let count = 0;
+async function searchCity(){
+ const city=document.getElementById('city').value.trim();
+ if(!city)return;
+ setStatus('Ricerca città...');
+ try{
+  const url='https://nominatim.openstreetmap.org/search?'+
+   new URLSearchParams({q:city,format:'json',limit:'1'});
+  const response=await fetch(url);
+  if(!response.ok)throw Error('Servizio non disponibile');
+  const data=await response.json();
+  if(!data.length){setStatus('Città non trovata');return;}
+  resetData();
+  map.setView([Number(data[0].lat),Number(data[0].lon)],13);
+  setStatus('Città selezionata: '+data[0].display_name);
+ }catch(e){setStatus('Errore nella ricerca della città');}
+}
 
-        for (const item of data.elements) {
-          const lat = item.lat ?? item.center?.lat;
-          const lon = item.lon ?? item.center?.lon;
-          if (lat == null || lon == null) continue;
-          const name = item.tags?.name || 'Lavanderia';
-          const safeName = document.createElement('div');
-          safeName.textContent = name;
-          L.marker([lat,lon]).bindPopup(safeName).addTo(layer);
-          count++;
-        }
-        status('Attività trovate: ' + count +
-          ' (lavanderie e tintorie censite in OpenStreetMap)');
-      } catch(e) {
-        status('Servizio temporaneamente non disponibile. Riprova.');
-      }
-    }
-  </script>
+function classify(tags){
+ if(tags.shop==='dry_cleaning')return 'other';
+ const value=(tags.self_service||'').toLowerCase();
+ if(value==='yes'||value==='only')return 'yes';
+ if(value==='no')return 'other';
+ return 'unknown';
+}
+
+function makeIcon(category){
+ const colors={yes:'green',unknown:'orange',other:'gray'};
+ return L.divIcon({
+  className:'',
+  html:'<div class="dot '+colors[category]+'"></div>',
+  iconSize:[18,18],
+  iconAnchor:[9,9]
+ });
+}
+
+function renderMarkers(){
+ layer.clearLayers();
+ const enabled={
+  yes:document.getElementById('showYes').checked,
+  unknown:document.getElementById('showUnknown').checked,
+  other:document.getElementById('showOther').checked
+ };
+ for(const p of places){
+  if(!enabled[p.category])continue;
+  const popup=document.createElement('div');
+  const title=document.createElement('strong');
+  title.textContent=p.name;
+  const detail=document.createElement('p');
+  detail.textContent='Categoria: '+({
+   yes:'Self-service indicato',
+   unknown:'Da verificare',
+   other:'Altra attività'
+  })[p.category];
+  popup.append(title,detail);
+  L.marker([p.lat,p.lon],{icon:makeIcon(p.category)})
+   .bindPopup(popup).addTo(layer);
+ }
+}
+
+async function loadLaundries(){
+ resetData();
+ setStatus('Ricerca lavanderie in corso...');
+ const b=map.getBounds();
+ const bbox=[b.getSouth(),b.getWest(),b.getNorth(),b.getEast()].join(',');
+ const query='[out:json][timeout:40];('+
+  'nwr["shop"="laundry"]('+bbox+');'+
+  'nwr["shop"="dry_cleaning"]('+bbox+');'+
+  ');out center;';
+
+ const servers=[
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass-api.de/api/interpreter'
+ ];
+
+ let data=null;
+ for(const server of servers){
+  try{
+   const controller=new AbortController();
+   const timer=setTimeout(()=>controller.abort(),45000);
+   try{
+    const response=await fetch(server,{
+     method:'POST',
+     body:new URLSearchParams({data:query}),
+     signal:controller.signal
+    });
+    if(!response.ok)throw Error('Server occupato');
+    data=await response.json();
+    break;
+   }finally{clearTimeout(timer);}
+  }catch(e){}
+ }
+
+ if(!data){
+  setStatus('Server occupati. Riprova tra qualche minuto.');
+  return;
+ }
+
+ const counts={yes:0,unknown:0,other:0};
+ for(const item of data.elements){
+  const lat=item.lat??item.center?.lat;
+  const lon=item.lon??item.center?.lon;
+  if(lat==null||lon==null)continue;
+  const tags=item.tags||{};
+  const category=classify(tags);
+  places.push({
+   lat,lon,category,
+   name:tags.name||'Attività senza nome'
+  });
+  counts[category]++;
+ }
+ for(const id of Object.keys(counts)){
+  document.getElementById(id).textContent=counts[id];
+ }
+ renderMarkers();
+ setStatus('Ricerca completata: '+places.length+
+  ' attività censite nell’area visibile.');
+}
+</script>
 </body>
 </html>
